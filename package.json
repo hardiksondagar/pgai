@@ -11,7 +11,8 @@
     "electron:wait": "wait-on http://localhost:3000 http://localhost:5001/api/health && electron .",
     "dev": "npm start",
     "build": "webpack --mode production",
-    "build:mac": "npm run build && electron-builder --mac",
+    "prebuild:mac": "npm run build && ./scripts/prepare-backend.sh",
+    "build:mac": "electron-builder --mac",
     "build:mac-dmg": "npm run build && electron-builder --mac --x64 --arm64",
     "package": "npm run build && electron-builder"
   },
@@ -78,19 +79,10 @@
       "dist/**/*",
       "electron/**/*",
       "backend/**/*",
-      "!backend/venv/**/*",
-      "!backend/__pycache__/**/*",
-      "!backend/*.pyc"
-    ],
-    "extraResources": [
-      {
-        "from": "backend/requirements.txt",
-        "to": "backend/requirements.txt"
-      },
-      {
-        "from": "backend/schema.sql",
-        "to": "backend/schema.sql"
-      }
+      "!backend/__pycache__",
+      "!backend/**/*.pyc",
+      "!backend/**/__pycache__",
+      "!**/*.map"
     ],
     "asarUnpack": [
       "backend/**/*"

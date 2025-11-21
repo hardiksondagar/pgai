@@ -19,7 +19,19 @@ npm install
 ./setup.sh
 ```
 
-### 2. Build the Application
+### 2. Prepare Python Backend (IMPORTANT!)
+
+**You MUST run this before building** to bundle Python dependencies:
+
+```bash
+./scripts/prepare-backend.sh
+```
+
+This creates `backend/venv/` with all Python packages pre-installed. This virtual environment is bundled into the app, ensuring Flask and all dependencies work without requiring users to install Python.
+
+If you skip this step, the packaged app will fail to start with "ModuleNotFoundError: No module named 'flask'".
+
+### 3. Build the Application
 
 #### Quick Build (Universal Binary)
 ```bash
