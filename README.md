@@ -102,7 +102,7 @@ PGAI is a modern, open-source PostgreSQL database client that puts AI at the cen
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pgai.git
+git clone https://github.com/hardiksondagar/pgai.git
 cd pgai
 
 # Run setup script (installs all dependencies)
@@ -339,8 +339,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- 🐛 **Issues**: [GitHub Issues](https://github.com/yourusername/pgai/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/yourusername/pgai/discussions)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/hardiksondagar/pgai/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/hardiksondagar/pgai/discussions)
 - 📧 **Email**: your.email@example.com
 
 ---
@@ -349,7 +349,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you find PGAI useful, please consider giving it a star! It helps others discover the project.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/pgai&type=Date)](https://star-history.com/#yourusername/pgai&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=hardiksondagar/pgai&type=Date)](https://star-history.com/#hardiksondagar/pgai&Date)
 
 ---
 
