@@ -1,0 +1,100 @@
+{
+  "name": "pgai",
+  "version": "0.1.0",
+  "description": "PostgreSQL client with AI-powered query generation",
+  "main": "electron/main.js",
+  "scripts": {
+    "setup": "bash setup.sh || setup.bat",
+    "start": "concurrently \"npm run backend\" \"npm run frontend\" \"npm run electron:wait\"",
+    "backend": "cd backend && bash start.sh || start.bat",
+    "frontend": "webpack serve --mode development",
+    "electron:wait": "wait-on http://localhost:3000 http://localhost:5001/api/health && electron .",
+    "dev": "npm start",
+    "build": "webpack --mode production",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:mac-dmg": "npm run build && electron-builder --mac --x64 --arm64",
+    "package": "npm run build && electron-builder"
+  },
+  "keywords": ["postgresql", "database", "ai", "sql"],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/pgai.git"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "axios": "^1.6.0",
+    "@monaco-editor/react": "^4.6.0",
+    "@tanstack/react-table": "^8.10.0",
+    "react-window": "^1.8.10",
+    "file-saver": "^2.0.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/file-saver": "^2.0.7",
+    "typescript": "^5.3.0",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^4.15.1",
+    "html-webpack-plugin": "^5.5.3",
+    "ts-loader": "^9.5.0",
+    "css-loader": "^6.8.1",
+    "style-loader": "^3.3.3",
+    "postcss": "^8.4.31",
+    "postcss-loader": "^7.3.3",
+    "tailwindcss": "^3.3.5",
+    "autoprefixer": "^10.4.16",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "concurrently": "^8.2.2",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.pgai.app",
+    "productName": "PGAI",
+    "directories": {
+      "output": "release"
+    },
+    "publish": null,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "darkModeSupport": true
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "backend/**/*",
+      "!backend/venv/**/*",
+      "!backend/__pycache__/**/*",
+      "!backend/*.pyc"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/requirements.txt",
+        "to": "backend/requirements.txt"
+      },
+      {
+        "from": "backend/schema.sql",
+        "to": "backend/schema.sql"
+      }
+    ],
+    "asarUnpack": [
+      "backend/**/*"
+    ]
+  }
+}
+
