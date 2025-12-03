@@ -53,6 +53,27 @@ export const databaseAPI = {
     api.post<{ success: boolean; message: string; table_count: number }>(
       `/connections/${connectionId}/refresh-schema`
     ),
+  getHealth: (connectionId: number) =>
+    api.get<{
+      success: boolean;
+      bloat: any;
+      indexes: any;
+      cache: any;
+      ai_analysis: {
+        success: boolean;
+        health_score: number;
+        grade: string;
+        critical_issues: any[];
+        action_items: Array<{
+          priority: string;
+          title: string;
+          description: string;
+          fix_sql?: string;
+          impact: string;
+        }>;
+        summary: string;
+      };
+    }>(`/connections/${connectionId}/health`),
 };
 
 // Query Execution
@@ -73,12 +94,90 @@ export const aiAPI = {
   getConversations: (connectionId: number) =>
     api.get<AIConversation[]>(`/ai/conversations/${connectionId}`),
   deleteConversation: (conversationId: number) => api.delete(`/ai/conversations/${conversationId}`),
+  explainQuery: (query: string, connectionId?: number) =>
+    api.post<{ success: boolean; explanation?: string; error?: string }>('/ai/explain-query', {
+      query,
+      connection_id: connectionId,
+    }),
+  debugQuery: (query: string, error: string, connectionId?: number) =>
+    api.post<{ success: boolean; fixed_query?: string; explanation?: string; error?: string }>(
+      '/ai/debug-query',
+      {
+        query,
+        error,
+        connection_id: connectionId,
+      }
+    ),
+  optimizeQuery: (query: string, connectionId?: number, executionTime?: number) =>
+    api.post<{
+      success: boolean;
+      original_query?: string;
+      optimized_query?: string;
+      suggestions?: string[];
+      explanation?: string;
+      error?: string;
+    }>('/ai/optimize-query', {
+      query,
+      connection_id: connectionId,
+      execution_time: executionTime,
+    }),
+  analyzeExplain: (query: string, connectionId: number) =>
+    api.post<{
+      success: boolean;
+      insights?: string[];
+      bottlenecks?: string[];
+      recommendations?: string[];
+      summary?: string;
+      plan_text?: string;
+      plan_json?: any;
+      error?: string;
+    }>('/ai/analyze-explain', {
+      query,
+      connection_id: connectionId,
+    }),
+  suggestIndexes: (connectionId: number) =>
+    api.post<{
+      success: boolean;
+      recommendations?: Array<{
+        table?: string;
+        columns?: string[];
+        reason?: string;
+        create_statement?: string;
+      }>;
+      analyzed_queries?: number;
+      error?: string;
+    }>('/ai/suggest-indexes', {
+      connection_id: connectionId,
+    }),
+  analyzeSlowQueries: (connectionId: number, queries: any[]) =>
+    api.post<{
+      success: boolean;
+      analyses?: Array<{
+        query_number: number;
+        issues: string[];
+        recommendations: string[];
+        indexes: string[];
+        estimated_improvement: string;
+      }>;
+      summary?: string;
+      query_count?: number;
+      error?: string;
+    }>('/ai/analyze-slow-queries', {
+      connection_id: connectionId,
+      queries: queries,
+    }),
 };
 
 // Query History
 export const historyAPI = {
   get: (connectionId: number) => api.get<QueryHistory[]>(`/history/${connectionId}`),
   delete: (historyId: number) => api.delete(`/history/${historyId}`),
+  getSlowQueries: (connectionId: number, minTime: number = 1.0, limit: number = 50, source: string = 'auto') =>
+    api.get<{
+      queries: QueryHistory[];
+      source: string;
+      sources_available: string[];
+    }>(`/connections/${connectionId}/slow-queries?min_time=${minTime}&limit=${limit}&source=${source}`),
 };
 
 // Favorites

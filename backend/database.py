@@ -155,6 +155,21 @@ class Database:
         conn.close()
         return [dict(row) for row in rows]
 
+    def get_slow_queries(self, connection_id: int, min_execution_time: float = 1.0, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get slow queries filtered by minimum execution time"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM query_history
+            WHERE connection_id = ?
+            AND execution_time >= ?
+            ORDER BY execution_time DESC
+            LIMIT ?
+        ''', (connection_id, min_execution_time, limit))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
     def delete_query_history(self, history_id: int) -> bool:
         """Delete query history item"""
         conn = self.get_connection()

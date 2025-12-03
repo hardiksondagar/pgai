@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Table } from '../../types';
-import { databaseAPI } from '../../services/api';
+import { databaseAPI, aiAPI } from '../../services/api';
 import TableTree from './TableTree';
 import TableSearch from './TableSearch';
+import InsightsPanel from '../AIAssistant/InsightsPanel';
+import SlowQueriesPanel from '../Performance/SlowQueriesPanel';
+import HealthDashboard from '../Health/HealthDashboard';
 
 interface DatabaseExplorerProps {
   connectionId: number;
@@ -14,6 +17,10 @@ const DatabaseExplorer: React.FC<DatabaseExplorerProps> = ({ connectionId }) => 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [indexInsights, setIndexInsights] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showSlowQueries, setShowSlowQueries] = useState(false);
+  const [showHealthDashboard, setShowHealthDashboard] = useState(false);
 
   useEffect(() => {
     loadTables();
@@ -62,21 +69,65 @@ const DatabaseExplorer: React.FC<DatabaseExplorerProps> = ({ connectionId }) => 
     }
   };
 
+  const handleIndexAdvisor = async () => {
+    setIsAnalyzing(true);
+    try {
+      const response = await aiAPI.suggestIndexes(connectionId);
+      if (response.data.success) {
+        setIndexInsights(response.data);
+      } else {
+        alert(response.data.error || 'Failed to analyze indexes');
+      }
+    } catch (err: any) {
+      console.error('Failed to get index suggestions:', err);
+      alert('Failed to analyze indexes: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   return (
+    <>
     <div className="h-full flex flex-col">
       <div className="p-3 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
             Database Explorer
           </h2>
-          <button
-            onClick={refreshSchema}
-            disabled={loading}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition text-sm"
-            title="Refresh Schema Cache"
-          >
-            {loading ? '⏳' : '🔄'}
-          </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowHealthDashboard(true)}
+                disabled={loading}
+                className="p-1 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition text-sm"
+                title="Database Health"
+              >
+                🏥
+              </button>
+              <button
+                onClick={() => setShowSlowQueries(true)}
+                disabled={loading}
+                className="p-1 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded transition text-sm"
+                title="Slow Queries Analysis"
+              >
+                ⏱️
+              </button>
+              <button
+                onClick={handleIndexAdvisor}
+                disabled={isAnalyzing || loading}
+                className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition text-sm"
+                title="AI Index Advisor"
+              >
+                {isAnalyzing ? '⏳' : '🔍'}
+              </button>
+              <button
+                onClick={refreshSchema}
+                disabled={loading}
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition text-sm"
+                title="Refresh Schema Cache"
+              >
+                {loading ? '⏳' : '🔄'}
+              </button>
+            </div>
         </div>
         <TableSearch value={searchTerm} onChange={setSearchTerm} />
       </div>
@@ -101,6 +152,29 @@ const DatabaseExplorer: React.FC<DatabaseExplorerProps> = ({ connectionId }) => 
         )}
       </div>
     </div>
+
+      {indexInsights && (
+        <InsightsPanel
+          type="indexes"
+          data={indexInsights}
+          onClose={() => setIndexInsights(null)}
+        />
+      )}
+
+      {showSlowQueries && (
+        <SlowQueriesPanel
+          connectionId={connectionId}
+          onClose={() => setShowSlowQueries(false)}
+        />
+      )}
+
+      {showHealthDashboard && (
+        <HealthDashboard
+          connectionId={connectionId}
+          onClose={() => setShowHealthDashboard(false)}
+        />
+      )}
+    </>
   );
 };
 

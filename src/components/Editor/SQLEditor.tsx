@@ -11,6 +11,9 @@ interface SQLEditorProps {
   onSaveFavorite?: () => void;
   onShowHistory?: () => void;
   onShowFavorites?: () => void;
+  onExplain?: () => void;
+  onOptimize?: () => void;
+  onAnalyze?: () => void;
   isExecuting: boolean;
   theme?: 'light' | 'dark';
   connectionId?: number;
@@ -24,6 +27,9 @@ const SQLEditor: React.FC<SQLEditorProps> = ({
   onSaveFavorite,
   onShowHistory,
   onShowFavorites,
+  onExplain,
+  onOptimize,
+  onAnalyze,
   isExecuting,
   theme = 'dark',
   connectionId,
@@ -201,6 +207,9 @@ const SQLEditor: React.FC<SQLEditorProps> = ({
         onSaveFavorite={onSaveFavorite}
         onShowHistory={onShowHistory}
         onShowFavorites={onShowFavorites}
+        onExplain={onExplain}
+        onOptimize={onOptimize}
+        onAnalyze={onAnalyze}
         isExecuting={isExecuting}
       />
 

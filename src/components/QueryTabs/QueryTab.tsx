@@ -4,7 +4,8 @@ import SQLEditor from '../Editor/SQLEditor';
 import ResultsGrid from '../Results/ResultsGrid';
 import QueryHistory from '../History/QueryHistory';
 import FavoriteQueries from '../History/FavoriteQueries';
-import { queryAPI, favoritesAPI } from '../../services/api';
+import InsightsPanel from '../AIAssistant/InsightsPanel';
+import { queryAPI, favoritesAPI, aiAPI } from '../../services/api';
 
 interface QueryTabProps {
   tab: QueryTabType;
@@ -26,6 +27,11 @@ const QueryTab: React.FC<QueryTabProps> = ({
   const [showFavorites, setShowFavorites] = useState(false);
   const [showSaveFavorite, setShowSaveFavorite] = useState(false);
   const [favoriteName, setFavoriteName] = useState('');
+  const [aiInsight, setAiInsight] = useState<{
+    type: 'explain' | 'debug' | 'optimize' | 'analyze' | 'indexes';
+    data: any;
+  } | null>(null);
+  const [isAIProcessing, setIsAIProcessing] = useState(false);
 
   const handleExecute = async (query: string) => {
     if (!query.trim()) return;
@@ -78,6 +84,98 @@ const QueryTab: React.FC<QueryTabProps> = ({
     setShowFavorites(false);
   };
 
+  const handleExplain = async () => {
+    if (!tab.content.trim()) return;
+
+    setIsAIProcessing(true);
+    try {
+      const response = await aiAPI.explainQuery(tab.content, connectionId);
+      if (response.data.success && response.data.explanation) {
+        setAiInsight({
+          type: 'explain',
+          data: response.data,
+        });
+      } else {
+        alert(response.data.error || 'Failed to explain query');
+      }
+    } catch (error: any) {
+      console.error('Failed to explain query:', error);
+      alert('Failed to explain query: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setIsAIProcessing(false);
+    }
+  };
+
+  const handleOptimize = async () => {
+    if (!tab.content.trim()) return;
+
+    setIsAIProcessing(true);
+    try {
+      const executionTime = tab.result?.execution_time;
+      const response = await aiAPI.optimizeQuery(tab.content, connectionId, executionTime);
+      if (response.data.success) {
+        setAiInsight({
+          type: 'optimize',
+          data: response.data,
+        });
+      } else {
+        alert(response.data.error || 'Failed to optimize query');
+      }
+    } catch (error: any) {
+      console.error('Failed to optimize query:', error);
+      alert('Failed to optimize query: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setIsAIProcessing(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!tab.content.trim()) return;
+
+    setIsAIProcessing(true);
+    try {
+      const response = await aiAPI.analyzeExplain(tab.content, connectionId);
+      if (response.data.success) {
+        setAiInsight({
+          type: 'analyze',
+          data: response.data,
+        });
+      } else {
+        alert(response.data.error || 'Failed to analyze query');
+      }
+    } catch (error: any) {
+      console.error('Failed to analyze query:', error);
+      alert('Failed to analyze query: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setIsAIProcessing(false);
+    }
+  };
+
+  const handleDebugQuery = async (query: string, error: string) => {
+    setIsAIProcessing(true);
+    try {
+      const response = await aiAPI.debugQuery(query, error, connectionId);
+      if (response.data.success) {
+        setAiInsight({
+          type: 'debug',
+          data: response.data,
+        });
+      } else {
+        alert(response.data.error || 'Failed to debug query');
+      }
+    } catch (error: any) {
+      console.error('Failed to debug query:', error);
+      alert('Failed to debug query: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setIsAIProcessing(false);
+    }
+  };
+
+  const handleInsertSQL = (sql: string) => {
+    onContentChange(sql);
+    setAiInsight(null);
+  };
+
   return (
     <>
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -90,7 +188,10 @@ const QueryTab: React.FC<QueryTabProps> = ({
             onSaveFavorite={handleSaveFavorite}
             onShowHistory={() => setShowHistory(true)}
             onShowFavorites={() => setShowFavorites(true)}
-            isExecuting={isExecuting}
+            onExplain={handleExplain}
+            onOptimize={handleOptimize}
+            onAnalyze={handleAnalyze}
+            isExecuting={isExecuting || isAIProcessing}
             theme={theme}
             connectionId={connectionId}
           />
@@ -98,7 +199,10 @@ const QueryTab: React.FC<QueryTabProps> = ({
 
         {tab.result && (
           <div className="h-1/2 border-t border-gray-200 dark:border-gray-700 overflow-hidden">
-            <ResultsGrid result={tab.result} />
+            <ResultsGrid
+              result={tab.result}
+              onDebugQuery={tab.result.error ? () => handleDebugQuery(tab.content, tab.result!.error!) : undefined}
+            />
           </div>
         )}
       </div>
@@ -116,6 +220,15 @@ const QueryTab: React.FC<QueryTabProps> = ({
           connectionId={connectionId}
           onSelectQuery={handleSelectQuery}
           onClose={() => setShowFavorites(false)}
+        />
+      )}
+
+      {aiInsight && (
+        <InsightsPanel
+          type={aiInsight.type}
+          data={aiInsight.data}
+          onClose={() => setAiInsight(null)}
+          onInsertSQL={handleInsertSQL}
         />
       )}
     </>

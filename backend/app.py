@@ -343,6 +343,225 @@ def delete_ai_conversation(conversation_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/ai/explain-query', methods=['POST'])
+def explain_query():
+    """Explain SQL query in plain English"""
+    try:
+        data = request.json
+        query = data.get('query', '')
+        connection_id = data.get('connection_id')
+
+        if not query:
+            return jsonify({'error': 'Query is required'}), 400
+
+        # Get schema context
+        schema_context = ""
+        if connection_id:
+            cached = db.get_schema_cache(connection_id)
+            if cached:
+                schema_context = ai_service.build_schema_context(cached['schema'])
+            else:
+                conn_data = db.get_connection_by_id(connection_id)
+                if conn_data:
+                    schema_data = fetch_and_cache_schema(connection_id, conn_data)
+                    schema_context = ai_service.build_schema_context(schema_data)
+
+        result = ai_service.explain_query(query, schema_context)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in explain_query: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ai/debug-query', methods=['POST'])
+def debug_query():
+    """Debug and fix SQL query errors"""
+    try:
+        data = request.json
+        query = data.get('query', '')
+        error = data.get('error', '')
+        connection_id = data.get('connection_id')
+
+        if not query or not error:
+            return jsonify({'error': 'Query and error are required'}), 400
+
+        # Get schema context
+        schema_context = ""
+        if connection_id:
+            cached = db.get_schema_cache(connection_id)
+            if cached:
+                schema_context = ai_service.build_schema_context(cached['schema'])
+            else:
+                conn_data = db.get_connection_by_id(connection_id)
+                if conn_data:
+                    schema_data = fetch_and_cache_schema(connection_id, conn_data)
+                    schema_context = ai_service.build_schema_context(schema_data)
+
+        result = ai_service.debug_query(query, error, schema_context)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in debug_query: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ai/optimize-query', methods=['POST'])
+def optimize_query():
+    """Optimize SQL query for performance"""
+    try:
+        data = request.json
+        query = data.get('query', '')
+        connection_id = data.get('connection_id')
+        exec_time = data.get('execution_time')
+
+        if not query:
+            return jsonify({'error': 'Query is required'}), 400
+
+        # Get schema context and indexes
+        schema_context = ""
+        indexes_context = ""
+        if connection_id:
+            conn_data = db.get_connection_by_id(connection_id)
+            if conn_data:
+                cached = db.get_schema_cache(connection_id)
+                if cached:
+                    schema_context = ai_service.build_schema_context(cached['schema'])
+                else:
+                    schema_data = fetch_and_cache_schema(connection_id, conn_data)
+                    schema_context = ai_service.build_schema_context(schema_data)
+
+                # Get all indexes
+                try:
+                    all_indexes = pg_client.get_all_indexes(conn_data)
+                    indexes_context = "\n".join([
+                        f"Table {table}: {', '.join([idx['name'] for idx in indexes])}"
+                        for table, indexes in all_indexes.items() if indexes
+                    ])
+                except:
+                    pass
+
+        result = ai_service.optimize_query(query, schema_context, exec_time, indexes_context)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in optimize_query: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ai/analyze-explain', methods=['POST'])
+def analyze_explain():
+    """Analyze EXPLAIN ANALYZE output"""
+    try:
+        data = request.json
+        query = data.get('query', '')
+        connection_id = data.get('connection_id')
+
+        if not query:
+            return jsonify({'error': 'Query is required'}), 400
+
+        if not connection_id:
+            return jsonify({'error': 'Connection ID is required'}), 400
+
+        conn_data = db.get_connection_by_id(connection_id)
+        if not conn_data:
+            return jsonify({'error': 'Connection not found'}), 404
+
+        # Execute EXPLAIN ANALYZE
+        explain_result = pg_client.execute_explain_analyze(conn_data, query)
+
+        if not explain_result.get('success'):
+            return jsonify({'error': explain_result.get('error', 'Failed to execute EXPLAIN')}), 500
+
+        # Get schema context
+        schema_context = ""
+        cached = db.get_schema_cache(connection_id)
+        if cached:
+            schema_context = ai_service.build_schema_context(cached['schema'])
+        else:
+            schema_data = fetch_and_cache_schema(connection_id, conn_data)
+            schema_context = ai_service.build_schema_context(schema_data)
+
+        # Analyze with AI
+        explain_output = explain_result['plan_text']
+        result = ai_service.analyze_explain_plan(explain_output, query, schema_context)
+
+        # Add the raw plan data
+        if result.get('success'):
+            result['plan_json'] = explain_result.get('plan_json')
+            result['plan_text'] = explain_result.get('plan_text')
+
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in analyze_explain: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ai/suggest-indexes', methods=['POST'])
+def suggest_indexes():
+    """Suggest missing indexes based on query history"""
+    try:
+        data = request.json
+        connection_id = data.get('connection_id')
+
+        if not connection_id:
+            return jsonify({'error': 'Connection ID is required'}), 400
+
+        conn_data = db.get_connection_by_id(connection_id)
+        if not conn_data:
+            return jsonify({'error': 'Connection not found'}), 404
+
+        # Get schema
+        cached = db.get_schema_cache(connection_id)
+        if cached:
+            schema_data = cached['schema']
+        else:
+            schema_data = fetch_and_cache_schema(connection_id, conn_data)
+
+        # Get query history
+        query_history = db.get_query_history(connection_id, limit=100)
+
+        # Get existing indexes
+        existing_indexes = pg_client.get_all_indexes(conn_data)
+
+        # Get AI suggestions
+        result = ai_service.suggest_indexes(schema_data, query_history, existing_indexes)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in suggest_indexes: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ai/analyze-slow-queries', methods=['POST'])
+def analyze_slow_queries():
+    """Analyze multiple slow queries with AI"""
+    try:
+        data = request.json
+        queries = data.get('queries', [])
+        connection_id = data.get('connection_id')
+
+        if not queries:
+            return jsonify({'error': 'Queries array is required'}), 400
+
+        if not connection_id:
+            return jsonify({'error': 'Connection ID is required'}), 400
+
+        # Get schema context
+        schema_context = ""
+        cached = db.get_schema_cache(connection_id)
+        if cached:
+            schema_context = ai_service.build_schema_context(cached['schema'])
+        else:
+            conn_data = db.get_connection_by_id(connection_id)
+            if conn_data:
+                schema_data = fetch_and_cache_schema(connection_id, conn_data)
+                schema_context = ai_service.build_schema_context(schema_data)
+
+        # Analyze with AI
+        result = ai_service.analyze_slow_queries_batch(queries, schema_context)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in analyze_slow_queries: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/connections/<int:connection_id>/refresh-schema', methods=['POST'])
 def refresh_schema(connection_id):
     """Manually refresh cached schema for a connection"""
@@ -364,6 +583,43 @@ def refresh_schema(connection_id):
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/connections/<int:connection_id>/health', methods=['GET'])
+def get_database_health(connection_id):
+    """Get comprehensive database health analysis"""
+    try:
+        conn_data = db.get_connection_by_id(connection_id)
+        if not conn_data:
+            return jsonify({'error': 'Connection not found'}), 404
+
+        # Get all health data
+        bloat_data = pg_client.get_table_bloat_analysis(conn_data)
+        index_data = pg_client.get_index_health_analysis(conn_data)
+        cache_data = pg_client.get_cache_hit_ratio(conn_data)
+
+        # Get schema context for AI
+        schema_context = ""
+        cached = db.get_schema_cache(connection_id)
+        if cached:
+            schema_context = ai_service.build_schema_context(cached['schema'])
+        else:
+            schema_data = fetch_and_cache_schema(connection_id, conn_data)
+            schema_context = ai_service.build_schema_context(schema_data)
+
+        # AI analysis
+        ai_analysis = ai_service.analyze_database_health(bloat_data, index_data, cache_data, schema_context)
+
+        return jsonify({
+            'success': True,
+            'bloat': bloat_data,
+            'indexes': index_data,
+            'cache': cache_data,
+            'ai_analysis': ai_analysis
+        })
+    except Exception as e:
+        print(f"Error in get_database_health: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 # Query History & Favorites
 @app.route('/api/history/<int:connection_id>', methods=['GET'])
 def get_query_history(connection_id):
@@ -381,6 +637,67 @@ def delete_query_history_item(history_id):
             return jsonify({'message': 'History item deleted'})
         return jsonify({'error': 'History item not found'}), 404
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/connections/<int:connection_id>/slow-queries', methods=['GET'])
+def get_slow_queries(connection_id):
+    """Get slow queries from both pg_stat_statements and application history"""
+    try:
+        min_time = float(request.args.get('min_time', 1.0))
+        limit = int(request.args.get('limit', 50))
+        source = request.args.get('source', 'auto')  # auto, pg_stat, or history
+
+        conn_data = db.get_connection_by_id(connection_id)
+        if not conn_data:
+            return jsonify({'error': 'Connection not found'}), 404
+
+        result = {
+            'queries': [],
+            'source': 'none',
+            'sources_available': []
+        }
+
+        # Try pg_stat_statements first if source is auto or pg_stat
+        if source in ['auto', 'pg_stat']:
+            pg_stat_result = pg_client.get_slow_queries_from_pg_stat(conn_data, min_time, limit)
+            if pg_stat_result.get('success'):
+                # Transform pg_stat data to match our format
+                pg_queries = []
+                for q in pg_stat_result.get('queries', []):
+                    pg_queries.append({
+                        'id': hash(q['query']) % 1000000,  # Generate pseudo-ID
+                        'query': q['query'],
+                        'execution_time': q['mean_time_seconds'],
+                        'executed_at': 'N/A (aggregated)',
+                        'calls': q['calls'],
+                        'total_time': q['total_time_seconds'],
+                        'max_time': q['max_time_seconds'],
+                        'min_time': q['min_time_seconds'],
+                        'total_rows': q.get('total_rows', 0),
+                        'source': 'pg_stat_statements'
+                    })
+
+                result['queries'] = pg_queries
+                result['source'] = 'pg_stat_statements'
+                result['sources_available'].append('pg_stat_statements')
+
+                if source == 'pg_stat':
+                    return jsonify(result)
+
+        # If pg_stat didn't work or source is history, try application history
+        if source in ['auto', 'history'] and (not result['queries'] or source == 'history'):
+            history_queries = db.get_slow_queries(connection_id, min_time, limit)
+            if history_queries:
+                for q in history_queries:
+                    q['source'] = 'application_history'
+                result['queries'] = history_queries
+                result['source'] = 'application_history'
+                result['sources_available'].append('application_history')
+
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in get_slow_queries: {e}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/favorites', methods=['GET'])

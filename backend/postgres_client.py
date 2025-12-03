@@ -255,6 +255,362 @@ class PostgresClient:
 
         return autocomplete_data
 
+    def execute_explain_analyze(self, conn_data: Dict[str, Any], query: str) -> Dict[str, Any]:
+        """Execute EXPLAIN ANALYZE on a query and return the plan"""
+        connection_id = conn_data['id']
+
+        try:
+            conn_pool = self.get_pool(connection_id, conn_data)
+            conn = conn_pool.getconn()
+
+            try:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+                # Wrap query with EXPLAIN ANALYZE
+                explain_query = f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {query}"
+                cursor.execute(explain_query)
+
+                result = cursor.fetchall()
+
+                # Extract the JSON plan
+                if result and len(result) > 0:
+                    plan = result[0].get('QUERY PLAN', [])
+
+                    # Also get text format for AI analysis
+                    cursor.execute(f"EXPLAIN (ANALYZE, BUFFERS) {query}")
+                    text_result = cursor.fetchall()
+                    text_plan = '\n'.join([row.get('QUERY PLAN', '') for row in text_result])
+
+                    return {
+                        'success': True,
+                        'plan_json': plan,
+                        'plan_text': text_plan
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': 'No execution plan returned'
+                    }
+
+            finally:
+                conn_pool.putconn(conn)
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def get_all_indexes(self, conn_data: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+        """Get all indexes for all tables"""
+        tables = self.get_tables(conn_data)
+        all_indexes = {}
+
+        for table in tables:
+            table_name = table['name']
+            indexes = self.get_table_indexes(conn_data, table_name)
+            all_indexes[table_name] = indexes
+
+        return all_indexes
+
+    def get_slow_queries_from_pg_stat(self, conn_data: Dict[str, Any], min_execution_time: float = 1.0, limit: int = 50) -> Dict[str, Any]:
+        """Get slow queries from pg_stat_statements extension"""
+        connection_id = conn_data['id']
+
+        try:
+            conn_pool = self.get_pool(connection_id, conn_data)
+            conn = conn_pool.getconn()
+
+            try:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+                # First check if pg_stat_statements is available
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'
+                    ) as has_extension
+                """)
+                result = cursor.fetchone()
+
+                if not result or not result['has_extension']:
+                    return {
+                        'success': False,
+                        'error': 'pg_stat_statements extension is not installed',
+                        'queries': []
+                    }
+
+                # Get slow queries from pg_stat_statements
+                # Filter by mean_exec_time (in milliseconds)
+                min_time_ms = min_execution_time * 1000
+
+                query = """
+                    SELECT
+                        query,
+                        calls,
+                        total_exec_time / 1000 as total_time_seconds,
+                        mean_exec_time / 1000 as mean_time_seconds,
+                        max_exec_time / 1000 as max_time_seconds,
+                        min_exec_time / 1000 as min_time_seconds,
+                        stddev_exec_time / 1000 as stddev_time_seconds,
+                        rows as total_rows
+                    FROM pg_stat_statements
+                    WHERE mean_exec_time >= %s
+                    AND query NOT LIKE '%%pg_stat_statements%%'
+                    AND query NOT LIKE '%%pg_catalog%%'
+                    ORDER BY mean_exec_time DESC
+                    LIMIT %s
+                """
+
+                cursor.execute(query, (min_time_ms, limit))
+                queries = cursor.fetchall()
+
+                return {
+                    'success': True,
+                    'queries': [dict(q) for q in queries],
+                    'source': 'pg_stat_statements'
+                }
+
+            finally:
+                conn_pool.putconn(conn)
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'queries': []
+            }
+
+    def get_currently_running_queries(self, conn_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get currently running queries from pg_stat_activity"""
+        connection_id = conn_data['id']
+
+        try:
+            conn_pool = self.get_pool(connection_id, conn_data)
+            conn = conn_pool.getconn()
+
+            try:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+                query = """
+                    SELECT
+                        pid,
+                        usename as username,
+                        application_name,
+                        client_addr,
+                        query_start,
+                        state,
+                        query,
+                        EXTRACT(EPOCH FROM (now() - query_start)) as duration_seconds
+                    FROM pg_stat_activity
+                    WHERE state = 'active'
+                    AND query NOT LIKE '%%pg_stat_activity%%'
+                    AND pid != pg_backend_pid()
+                    ORDER BY query_start ASC
+                """
+
+                cursor.execute(query)
+                queries = cursor.fetchall()
+
+                return {
+                    'success': True,
+                    'queries': [dict(q) for q in queries]
+                }
+
+            finally:
+                conn_pool.putconn(conn)
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'queries': []
+            }
+
+    def get_table_bloat_analysis(self, conn_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze table bloat and vacuum statistics"""
+        connection_id = conn_data['id']
+
+        try:
+            conn_pool = self.get_pool(connection_id, conn_data)
+            conn = conn_pool.getconn()
+
+            try:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+                # Get bloat estimation and vacuum stats
+                query = """
+                    SELECT
+                        schemaname,
+                        relname as tablename,
+                        pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname)) as total_size,
+                        pg_total_relation_size(schemaname||'.'||relname) as total_bytes,
+                        n_live_tup,
+                        n_dead_tup,
+                        CASE
+                            WHEN n_live_tup > 0
+                            THEN round(100.0 * n_dead_tup / (n_live_tup + n_dead_tup), 2)
+                            ELSE 0
+                        END as bloat_percent,
+                        last_vacuum,
+                        last_autovacuum,
+                        last_analyze,
+                        last_autoanalyze,
+                        vacuum_count,
+                        autovacuum_count,
+                        analyze_count,
+                        autoanalyze_count
+                    FROM pg_stat_user_tables
+                    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+                    ORDER BY total_bytes DESC
+                """
+
+                cursor.execute(query)
+                tables = cursor.fetchall()
+
+                return {
+                    'success': True,
+                    'tables': [dict(t) for t in tables]
+                }
+
+            finally:
+                conn_pool.putconn(conn)
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'tables': []
+            }
+
+    def get_index_health_analysis(self, conn_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze index health: unused, duplicate, bloated"""
+        connection_id = conn_data['id']
+
+        try:
+            conn_pool = self.get_pool(connection_id, conn_data)
+            conn = conn_pool.getconn()
+
+            try:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+                # Get index usage statistics
+                query = """
+                    SELECT
+                        schemaname,
+                        relname as tablename,
+                        indexrelname as indexname,
+                        pg_size_pretty(pg_relation_size(indexrelid)) as index_size,
+                        pg_relation_size(indexrelid) as index_bytes,
+                        idx_scan,
+                        idx_tup_read,
+                        idx_tup_fetch
+                    FROM pg_stat_user_indexes
+                    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+                    ORDER BY pg_relation_size(indexrelid) DESC
+                """
+
+                cursor.execute(query)
+                indexes = cursor.fetchall()
+
+                # Find duplicate indexes (indexes on same columns)
+                duplicate_query = """
+                    SELECT
+                        array_agg(indexrelname) as duplicate_indexes,
+                        relname as tablename,
+                        string_agg(pg_get_indexdef(indexrelid), ' | ') as definitions
+                    FROM pg_stat_user_indexes
+                    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+                    GROUP BY relname, pg_get_indexdef(indexrelid)
+                    HAVING count(*) > 1
+                """
+
+                cursor.execute(duplicate_query)
+                duplicates = cursor.fetchall()
+
+                return {
+                    'success': True,
+                    'indexes': [dict(i) for i in indexes],
+                    'duplicates': [dict(d) for d in duplicates]
+                }
+
+            finally:
+                conn_pool.putconn(conn)
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'indexes': [],
+                'duplicates': []
+            }
+
+    def get_cache_hit_ratio(self, conn_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get cache hit ratio and table access patterns"""
+        connection_id = conn_data['id']
+
+        try:
+            conn_pool = self.get_pool(connection_id, conn_data)
+            conn = conn_pool.getconn()
+
+            try:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+                # Overall cache hit ratio
+                cache_query = """
+                    SELECT
+                        sum(heap_blks_read) as heap_read,
+                        sum(heap_blks_hit) as heap_hit,
+                        CASE
+                            WHEN sum(heap_blks_hit) + sum(heap_blks_read) > 0
+                            THEN round(100.0 * sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read)), 2)
+                            ELSE 0
+                        END as cache_hit_ratio
+                    FROM pg_statio_user_tables
+                """
+
+                cursor.execute(cache_query)
+                cache_stats = cursor.fetchone()
+
+                # Per-table cache stats
+                table_cache_query = """
+                    SELECT
+                        schemaname,
+                        relname as tablename,
+                        heap_blks_read,
+                        heap_blks_hit,
+                        CASE
+                            WHEN heap_blks_hit + heap_blks_read > 0
+                            THEN round(100.0 * heap_blks_hit / (heap_blks_hit + heap_blks_read), 2)
+                            ELSE 0
+                        END as cache_hit_ratio,
+                        idx_blks_read,
+                        idx_blks_hit
+                    FROM pg_statio_user_tables
+                    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+                    ORDER BY heap_blks_read + heap_blks_hit DESC
+                    LIMIT 50
+                """
+
+                cursor.execute(table_cache_query)
+                table_stats = cursor.fetchall()
+
+                return {
+                    'success': True,
+                    'overall': dict(cache_stats) if cache_stats else {},
+                    'tables': [dict(t) for t in table_stats]
+                }
+
+            finally:
+                conn_pool.putconn(conn)
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'overall': {},
+                'tables': []
+            }
+
     def close_pool(self, connection_id: int):
         """Close connection pool"""
         if connection_id in self.connection_pools:

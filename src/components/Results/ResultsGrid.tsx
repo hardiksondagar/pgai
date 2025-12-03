@@ -3,9 +3,10 @@ import { QueryResult } from '../../types';
 
 interface ResultsGridProps {
   result: QueryResult;
+  onDebugQuery?: () => void;
 }
 
-const ResultsGrid: React.FC<ResultsGridProps> = ({ result }) => {
+const ResultsGrid: React.FC<ResultsGridProps> = ({ result, onDebugQuery }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(100);
 
@@ -48,7 +49,17 @@ const ResultsGrid: React.FC<ResultsGridProps> = ({ result }) => {
   if (!result.success) {
     return (
       <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded m-4">
-        <h3 className="text-red-800 dark:text-red-200 font-semibold mb-2">Error</h3>
+        <div className="flex items-start justify-between mb-2">
+          <h3 className="text-red-800 dark:text-red-200 font-semibold">Error</h3>
+          {onDebugQuery && (
+            <button
+              onClick={onDebugQuery}
+              className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition flex items-center gap-1"
+            >
+              🔧 AI Debug
+            </button>
+          )}
+        </div>
         <pre className="text-red-700 dark:text-red-300 text-sm whitespace-pre-wrap">
           {result.error}
         </pre>

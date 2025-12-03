@@ -6,6 +6,9 @@ interface EditorToolbarProps {
   onSaveFavorite?: () => void;
   onShowHistory?: () => void;
   onShowFavorites?: () => void;
+  onExplain?: () => void;
+  onOptimize?: () => void;
+  onAnalyze?: () => void;
   isExecuting: boolean;
 }
 
@@ -15,6 +18,9 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onSaveFavorite,
   onShowHistory,
   onShowFavorites,
+  onExplain,
+  onOptimize,
+  onAnalyze,
   isExecuting,
 }) => {
   return (
@@ -46,6 +52,38 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
             title="Save as Favorite"
           >
             ⭐ Save
+          </button>
+        )}
+
+        <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-1" />
+
+        {onExplain && (
+          <button
+            onClick={onExplain}
+            className="px-3 py-1.5 text-sm bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition"
+            title="Explain Query (AI)"
+          >
+            📖 Explain
+          </button>
+        )}
+
+        {onOptimize && (
+          <button
+            onClick={onOptimize}
+            className="px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
+            title="Optimize Query (AI)"
+          >
+            ⚡ Optimize
+          </button>
+        )}
+
+        {onAnalyze && (
+          <button
+            onClick={onAnalyze}
+            className="px-3 py-1.5 text-sm bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded hover:bg-orange-200 dark:hover:bg-orange-900/50 transition"
+            title="Analyze Performance (AI)"
+          >
+            📊 Analyze
           </button>
         )}
       </div>
